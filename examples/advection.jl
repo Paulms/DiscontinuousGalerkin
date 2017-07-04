@@ -37,15 +37,26 @@ uₛ = mybasis.ψₕ*u
               Q is the edge fluxes
               F is the interior flux"
 function residual{T}(basis::Basis{T})
-  F = uₕ
+  F = zeros(uₕ)
   # Integrate interior fluxes
-  F = A_mul_B!(F, basis.φₕ.*basis.weights, F)
+  F = A_mul_B!(F, basis.dφₕ.*basis.weights, uₕ)
 
   # Evaluate edge fluxes
   q = zeros(T,size(uₛ,2)-1)
   for i = 1:(size(uₛ,2)-1)
-    ul = @view uₛ[2,i]; ur = @view uₛ[1,i+1]
+    ul = uₛ[2,i]; ur = uₛ[1,i+1]
     q[i] = advection_solver(ul,ur)
+  end
+  Q = zeros(F)
+  for i in 1:size(Q,1)
+    Q[i,2:end-1] = diff(q)
+  end
+  for i in 2:2:size(Q,1)
+    Q[i,2:end-1] = q[1:end-1] + q[2:end]
+  end
+
+  #Calculate residual
+  for k in 1:(basis.order+1)
   end
 
 end
