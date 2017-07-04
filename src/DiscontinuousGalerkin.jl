@@ -11,4 +11,6 @@ module DiscontinuousGalerkin
 
   export Uniform1DMesh
   export legendre_basis, project_function
+  export get_local_mass_matrix, get_local_inv_mass_matrix
+  export DGScalar1DProblem
 end
