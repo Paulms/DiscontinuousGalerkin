@@ -8,55 +8,39 @@ mesh = Uniform1DMesh(N,-2.0,2.0)
 #define initial condition
 f0(x) = sin(2*π*x)
 
+#define flux function
+f(u) = u
+
+#define max wave speed
+max_w_speed(u) = 1
+
 #Setup problem
-problem = DGScalar1DProblem(f0)
+tspan = (0.0,1.0)
+cfl = 0.5
+problem = DGScalar1DProblem(f0, f, max_w_speed, mesh, tspan, cfl)
 
-#Assign Initial values
-mybasis=legendre_basis(3)
-u0 = zeros(mybasis.order+1,N)
-for i = 1:N
-  value = project_function(problem.f0,mybasis,(mesh.cell_faces[i],mesh.cell_faces[i+1]))
-  u0[:,i] = value.param
+#Generate basis for Discontinuous Galerkin Scheme
+basis=legendre_basis(3)
+
+#Solve problem
+u = solve(problem, DiscontinuousGalerkinScheme(basis, advection_solver))
+
+#Plot
+uₕ = basis.φₕ*u[2]
+uₕ = uₕ[:]
+uₛ = basis.ψₕ*u[2]
+xf = zeros(uₛ)
+uₛ = uₛ[:]
+xg = zeros(u[1])
+for i in 1:size(xg,2)
+  b = mesh.cell_faces[i+1]; a=mesh.cell_faces[i]
+  xg[:,i] = 0.5 * (b - a) * basis.nodes + 0.5 * (b + a)
+  xf[:,i] = [a,b]
 end
+xg = xg[:]
+xf = xf[:]
 
-#Add ghost cells
-u = hcat(zeros(u0[:,1]),u0,zeros(u0[:,1]))
-
-#build inverse of mass matrix
-M_inv = get_local_inv_mass_matrix(mybasis, mesh)
-
-#Reconstruct u in finite space
-uₕ = mybasis.φₕ*u
-
-#Reconstruct u on faces
-uₛ = mybasis.ψₕ*u
-
-"Calculates residual for DG method
-  residual = M_inv*(Q+F)
-         where M_inv is the inverse mass matrix
-              Q is the edge fluxes
-              F is the interior flux"
-function residual{T}(basis::Basis{T})
-  F = zeros(uₕ)
-  # Integrate interior fluxes
-  F = A_mul_B!(F, basis.dφₕ.*basis.weights, uₕ)
-
-  # Evaluate edge fluxes
-  q = zeros(T,size(uₛ,2)-1)
-  for i = 1:(size(uₛ,2)-1)
-    ul = uₛ[2,i]; ur = uₛ[1,i+1]
-    q[i] = advection_solver(ul,ur)
-  end
-  Q = zeros(F)
-  for i in 1:size(Q,1)
-    Q[i,2:end-1] = diff(q)
-  end
-  for i in 2:2:size(Q,1)
-    Q[i,2:end-1] = q[1:end-1] + q[2:end]
-  end
-
-  #Calculate residual
-  for k in 1:(basis.order+1)
-  end
-
-end
+using Plots
+gr()
+plot(xg, uₕ)
+scatter!(xf, uₛ)

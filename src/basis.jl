@@ -68,22 +68,30 @@ end
 function get_local_mass_matrix{T}(basis::Basis{T}, mesh)
   diagnal = zeros(T, basis.order+1)
   diagnal[:] = 2.0/(2*(0:basis.order)+1)
-  M = Vector{T}(basis.order+1)
+  M = Vector{T}(mesh.N)
   m = diagm(diagnal)
-  for k in 1:(basis.order+1)
+  for k in 1:mesh.N
     M[k] = mesh.cell_dx[k]/2.0*m
   end
   return M
 end
 
 "Get mass matrix inverse"
-function get_local_inv_mass_matrix{T}(basis::Basis{T}, mesh)
+function get_local_inv_mass_matrix{T,T2}(basis::Basis{T}, mesh::DG1DMesh{T2})
   diagnal = zeros(T, basis.order+1)
   diagnal[:] = (2*(0:basis.order)+1) / 2.0
-  M_inv = Vector{Matrix{T}}(basis.order+1)
+  M_inv = Vector{Matrix{T}}(mesh.N)
   M = diagm(diagnal)
-  for k in 1:(basis.order+1)
+  for k in 1:mesh.N
     M_inv[k] = 2.0./mesh.cell_dx[k]*M
   end
   return M_inv
+end
+
+"compute local inverse matrix on 1D uniform problems"
+function get_local_inv_mass_matrix{T,T2}(basis::Basis{T}, mesh::DGU1DMesh{T2})
+  diagnal = zeros(T, basis.order+1)
+  diagnal[:] = (2*(0:basis.order)+1) / 2.0
+  M_inv = Vector{Matrix{T}}(mesh.N)
+  return 2.0/mesh.cell_dx*diagm(diagnal)
 end
