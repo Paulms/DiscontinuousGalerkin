@@ -101,7 +101,7 @@ end
   end
   Q = zeros(F)
   for l in 1:size(Q,1)
-    Q[l,2:end-1] = (-1)^l*q[2:end] - q[1:end-1]
+    Q[l,2:end-1] = q[2:end] + (-1)^l*q[1:end-1]
   end
 end
 function residual!{T}(H, u, basis::Basis{T}, problem::DGProblem, riemann_solver, M_inv)

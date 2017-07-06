@@ -26,9 +26,9 @@ basis=legendre_basis(3)
 u = solve(problem, DiscontinuousGalerkinScheme(basis, advection_solver))
 
 #Plot
-uₕ = basis.φₕ*u[2]
+uₕ = basis.φₕ*u[end]
 uₕ = uₕ[:]
-uₛ = basis.ψₕ*u[2]
+uₛ = basis.ψₕ*u[end]
 xf = zeros(uₛ)
 uₛ = uₛ[:]
 xg = zeros(u[1])
