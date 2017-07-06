@@ -45,12 +45,14 @@ function legendre_basis{T<:Number}(order, ::Type{T}=Float64)
   Basis{T}(order,nodes,weights,polynomials,φₕ,ψₕ,dφₕ)
 end
 
-function quadrature_to_interval(x,a::Tuple)
-   0.5*(a[2]-a[1])*x + 0.5*(a[2]+a[1])
+"Maps reference coordinates (ξ) to interval coordinates (x)"
+function reference_to_interval(ξ,a::Tuple)
+   0.5*(a[2]-a[1])*ξ + 0.5*(a[2]+a[1])
 end
 
+"Project function f on polynomial space Vₕ"
 function project_function(f, basis, interval::Tuple)
-  nodes = quadrature_to_interval(basis.nodes, interval)
+  nodes = reference_to_interval(basis.nodes, interval)
   f_val = f.(nodes)
   function model(x,p)
     result = zeros(x)
@@ -64,7 +66,7 @@ function project_function(f, basis, interval::Tuple)
 end
 
 #TODO: Dispatch on different basis types
-"Get mass matrix"
+"Get mass matrix: (2l+1)/Δx for legendre polynomials"
 function get_local_mass_matrix{T}(basis::Basis{T}, mesh)
   diagnal = zeros(T, basis.order+1)
   diagnal[:] = 2.0/(2*(0:basis.order)+1)
@@ -76,7 +78,7 @@ function get_local_mass_matrix{T}(basis::Basis{T}, mesh)
   return M
 end
 
-"Get mass matrix inverse"
+"Get mass matrix inverse: Δx/(2l+1) for legendre polynomials"
 function get_local_inv_mass_matrix{T,T2}(basis::Basis{T}, mesh::DG1DMesh{T2})
   diagnal = zeros(T, basis.order+1)
   diagnal[:] = (2*(0:basis.order)+1) / 2.0

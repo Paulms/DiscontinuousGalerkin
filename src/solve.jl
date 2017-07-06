@@ -19,11 +19,11 @@ function solve{MeshType}(
   mesh = problem.mesh
   N = mesh.N
 
-  #Assign Initial values
-  u0 = zeros(basis.order+1, N)
+  #Assign Initial values (u0 = φₕ⋅u0ₘ)
+  u0ₘ = zeros(basis.order+1, N)
   for i = 1:N
     value = project_function(problem.f0,basis,(mesh.cell_faces[i],mesh.cell_faces[i+1]))
-    u0[:,i] = value.param
+    u0ₘ[:,i] = value.param
   end
 
   #build inverse of mass matrix
@@ -31,10 +31,10 @@ function solve{MeshType}(
 
   #Time loop
   #First dt
-  dt = update_dt(u0, problem, basis.order)
+  dt = update_dt(u0ₘ, problem, basis.order)
   # Setup time integrator
   semidiscretef(t,u,du) = residual!(du, u, basis, problem, riemann_solver, M_inv)
-  prob = ODEProblem(semidiscretef, u0, problem.tspan)
+  prob = ODEProblem(semidiscretef, u0ₘ, problem.tspan)
   timeIntegrator = init(prob, TimeAlgorithm;dt=dt, kwargs...)
   @inbounds for i in timeIntegrator
     dt = update_dt(timeIntegrator.u, problem, basis.order)
@@ -65,30 +65,33 @@ function apply_boundary(u, problem::DGScalar1DProblem)
 end
 
 "Calculates residual for DG method
+  Inputs:
+    H = matrix used to store residuals
+    u = coefficients of current finite solution approx.
   residual = M_inv*(Q+F)
          where M_inv is the inverse mass matrix
               Q is the edge fluxes
               F is the interior flux"
 @def scalar_1D_residual_common begin
   #Add ghost cells
-  ut = hcat(zeros(u[:,1]),u,zeros(u[:,1]))
+  uₘ = hcat(zeros(u[:,1]),u,zeros(u[:,1]))
 
   #Apply boundary conditions TODO: Other boundary types
-  apply_boundary(ut, problem)
+  apply_boundary(uₘ, problem)
 
-  #Reconstruct u in finite space
-  uₕ = basis.φₕ*ut
+  #Reconstruct u in finite space: uₕ(ξ)
+  uₕ = basis.φₕ*uₘ
 
   #Reconstruct u on faces
-  uₛ = basis.ψₕ*ut
+  uₛ = basis.ψₕ*uₘ
 
   F = zeros(uₕ)
   Fₕ = zeros(uₕ)
   for k in 1:size(uₕ,2)
     Fₕ[:,k] = problem.f(uₕ[:,k])
   end
-  # Integrate interior fluxes
-  F = A_mul_B!(F, basis.dφₕ.*basis.weights, Fₕ)
+  # Integrate interior fluxes ∫f(uₕ)φ'(ξ)dξ
+  F = A_mul_B!(F,basis.dφₕ',Fₕ.*basis.weights)
 
   # Evaluate edge fluxes
   q = zeros(T,size(uₛ,2)-1)
@@ -97,11 +100,8 @@ end
     q[i] = riemann_solver(ul,ur)
   end
   Q = zeros(F)
-  for i in 1:size(Q,1)
-    Q[i,2:end-1] = diff(q)
-  end
-  for i in 2:2:size(Q,1)
-    Q[i,2:end-1] = q[1:end-1] + q[2:end]
+  for l in 1:size(Q,1)
+    Q[l,2:end-1] = (-1)^l*q[2:end] - q[1:end-1]
   end
 end
 function residual!{T}(H, u, basis::Basis{T}, problem::DGProblem, riemann_solver, M_inv)
