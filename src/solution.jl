@@ -24,24 +24,24 @@ rateType,P,A,IType}(
   dense,tslocation,retcode = ode_sol
   mesh = problem.mesh
   #Use first value to infere types
-  k = 1
-  uₕ = basis.φₕ*ode_sol.u[k]
-  uₕ = uₕ[:]
-  u = Vector{typeof(uₕ)}(0)
-  push!(u, uₕ)
-  uf = basis.ψₕ*ode_sol.u[end]
-  xf = zeros(uf)
-  uf = uf[:]
-  uₛ = Vector{typeof(uf)}(0)
-  push!(uₛ, uf)
-  # Save the rest of the iterations
-  for k in 2:size(ode_sol.u,1)
-    uₕ = basis.φₕ*ode_sol.u[k]
-    push!(u, uₕ[:])
-    uf = basis.ψₕ*ode_sol.u[k]
-    push!(uₛ, uf[:])
+  NC = size(ode_sol.u[1],3)
+
+  u = Vector{Matrix{eltype(ode_sol.u[1])}}(0)
+  uₛ = Vector{Matrix{eltype(ode_sol.u[1])}}(0)
+
+  for k in 1:size(ode_sol.u,1)
+    uh = zeros(eltype(ode_sol.u[k]),size(basis.φₕ,1)*size(ode_sol.u[k],2), NC)
+    uf = zeros(eltype(ode_sol.u[k]),size(basis.ψₕ,1)*size(ode_sol.u[k],2), NC)
+    for j in 1:NC
+      uₕ = basis.φₕ*ode_sol.u[k]
+      us = basis.ψₕ*ode_sol.u[k]
+      uh[:,j] = uₕ
+      uf[:,j] = us
+    end
+    push!(u, uₕ)
+    push!(uₛ, uf)
   end
-  xg = zeros(ode_sol.u[1])
+  xg = zeros(ode_sol.u[1][:,:,1])
   for i in 1:size(xg,2)
     b = mesh.cell_faces[i+1]; a=mesh.cell_faces[i]
     xg[:,i] = 0.5 * (b - a) * basis.nodes + 0.5 * (b + a)
@@ -57,7 +57,21 @@ end
 function (sol::DGSolution)(t,deriv::Type=Val{0};idxs=nothing)
   uₘ = sol.interp(t,idxs,deriv)
   if typeof(uₘ) <: Vector
-    return [(sol.basis.φₕ*M)[:] for M in uₘ]
+    NC = size(uₘ[1],3)
+    u = Vector{Matrix{eltype(uₘ[1])}}(0)
+    for k in 1:size(uₘ,1)
+      uh = zeros(eltype(ode_sol.u[k]),size(basis.φₕ,1)*size(ode_sol.u[k],2), NC)
+      uf = zeros(eltype(ode_sol.u[k]),size(basis.ψₕ,1)*size(ode_sol.u[k],2), NC)
+      for j in 1:NC
+        uₕ = basis.φₕ*ode_sol.u[k]
+        us = basis.ψₕ*ode_sol.u[k]
+        uh[:,j] = uₕ
+        uf[:,j] = us
+      end
+      push!(u, uₕ)
+      push!(uₛ, uf)
+    end
+    return [(sol.basis.φₕ*M[:,:,j])[:] for j in size(M,3) for M in uₘ]
   else
     return (sol.basis.φₕ*uₘ)[:]
   end

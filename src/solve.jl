@@ -18,12 +18,14 @@ function solve{MeshType}(
   @unpack basis, TimeAlgorithm, riemann_solver = alg
   mesh = problem.mesh
   N = mesh.N
-
+  NC = size(problem.f0(mesh.cell_faces[1]),1)
   #Assign Initial values (u0 = φₕ⋅u0ₘ)
-  u0ₘ = zeros(basis.order+1, N)
+  u0ₘ = zeros(basis.order+1, N, NC)
   for i = 1:N
-    value = project_function(problem.f0,basis,(mesh.cell_faces[i],mesh.cell_faces[i+1]))
-    u0ₘ[:,i] = value.param
+    for j in 1:NC
+      value = project_function(problem.f0,basis,(mesh.cell_faces[i],mesh.cell_faces[i+1]);component = j)
+      u0ₘ[:,i,j] = value.param
+    end
   end
 
   #build inverse of mass matrix
@@ -57,10 +59,10 @@ end
 "Apply boundary conditions on scalar problems"
 function apply_boundary(u, problem::DGScalar1DProblem)
   if problem.left_boundary == :Periodic
-    u[:,1] = u[:,end-1]
+      u[:,1] = u[:,end-1]
   end
   if problem.right_boundary == :Periodic
-    u[:,end] = u[:,2]
+      u[:,end] = u[:,2]
   end
 end
 
@@ -72,51 +74,45 @@ end
          where M_inv is the inverse mass matrix
               Q is the edge fluxes
               F is the interior flux"
-@def scalar_1D_residual_common begin
-  #Add ghost cells
-  uₘ = hcat(zeros(u[:,1]),u,zeros(u[:,1]))
 
-  #Apply boundary conditions TODO: Other boundary types
-  apply_boundary(uₘ, problem)
-
-  #Reconstruct u in finite space: uₕ(ξ)
-  uₕ = basis.φₕ*uₘ
-
-  #Reconstruct u on faces
-  uₛ = basis.ψₕ*uₘ
-
-  F = zeros(uₕ)
-  Fₕ = zeros(uₕ)
-  for k in 1:size(uₕ,2)
-    Fₕ[:,k] = problem.f(uₕ[:,k])
-  end
-  # Integrate interior fluxes ∫f(uₕ)φ'(ξ)dξ
-  F = A_mul_B!(F,basis.dφₕ',Fₕ.*basis.weights)
-
-  # Evaluate edge fluxes
-  q = zeros(T,size(uₛ,2)-1)
-  for i = 1:(size(uₛ,2)-1)
-    ul = uₛ[2,i]; ur = uₛ[1,i+1]
-    q[i] = riemann_solver(ul,ur)
-  end
-  Q = zeros(F)
-  for l in 1:size(Q,1)
-    Q[l,2:end-1] = q[2:end] + (-1)^l*q[1:end-1]
-  end
-end
-function residual!{T}(H, u, basis::Basis{T}, problem::DGProblem, riemann_solver, M_inv)
-  @scalar_1D_residual_common
-  H[:,:] = F[:,2:(end-1)]-Q[:,2:(end-1)]
-  #Calculate residual
-  for k in 1:mesh.N
-    H[:,k] = M_inv[k-1]*H[:,k]
-  end
-  H
-end
-
-"Efficient residual computation for scalar problems"
+"Efficient residual computation for uniform 1D problems"
 function residual!{T, MeshType<:DGU1DMesh}(H, u, basis::Basis{T}, problem::DGScalar1DProblem{MeshType}, riemann_solver, M_inv)
-  @scalar_1D_residual_common
-  #Calculate residual
-  A_mul_B!(H,M_inv,F[:,2:(end-1)]-Q[:,2:(end-1)])
+  #Add ghost cells
+  NC = size(u,3)
+  H = zeros(u)
+  for j in 1:NC
+    uₘ = zeros(T, size(u,1),size(u,2)+2)
+    uₘ = hcat(zeros(u[:,1,j]),u[:,:,j],zeros(u[:,1,j]))
+
+    #Apply boundary conditions TODO: Other boundary types
+    apply_boundary(uₘ, problem)
+
+    #Reconstruct u in finite space: uₕ(ξ)
+    uₕ = basis.φₕ*uₘ
+
+    #Reconstruct u on faces
+    uₛ = basis.ψₕ*uₘ
+
+    F = zeros(uₕ)
+    Fₕ = zeros(uₕ)
+    for k in 1:size(uₕ,2)
+      Fₕ[:,k] = problem.f(uₕ[:,k])
+    end
+    # Integrate interior fluxes ∫f(uₕ)φ'(ξ)dξ
+    F = A_mul_B!(F,basis.dφₕ',Fₕ.*basis.weights)
+
+    # Evaluate edge fluxes
+    q = zeros(T,size(uₛ,2)-1)
+    for i = 1:(size(uₛ,2)-1)
+      ul = uₛ[2,i]; ur = uₛ[1,i+1]
+      q[i] = riemann_solver(ul,ur)
+    end
+    Q = zeros(F)
+    for l in 1:size(Q,1)
+      Q[l,2:end-1] = q[2:end] + (-1)^l*q[1:end-1]
+    end
+    #Calculate residual
+    Hc = @view H[:,:,j]
+    A_mul_B!(Hc,M_inv,F[:,2:(end-1)]-Q[:,2:(end-1)])
+  end
 end

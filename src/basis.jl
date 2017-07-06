@@ -51,9 +51,12 @@ function reference_to_interval(ξ,a::Tuple)
 end
 
 "Project function f on polynomial space Vₕ"
-function project_function(f, basis, interval::Tuple)
+function project_function(f, basis, interval::Tuple; component = 1)
   nodes = reference_to_interval(basis.nodes, interval)
-  f_val = f.(nodes)
+  f_val = zeros(nodes)
+  for i in size(f_val,1)
+    f_val[i] = f(nodes[i])[component]
+  end
   function model(x,p)
     result = zeros(x)
     for i in 1:size(p,1)
