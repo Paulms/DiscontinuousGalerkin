@@ -15,6 +15,8 @@ module DiscontinuousGalerkin
   include("riemann_solvers.jl")
   include("basis.jl")
   include("solve.jl")
+  include("solution.jl")
+  include("plots.jl")
 
   export Uniform1DMesh
   export legendre_basis

@@ -26,21 +26,6 @@ basis=legendre_basis(3)
 u = solve(problem, DiscontinuousGalerkinScheme(basis, advection_solver))
 
 #Plot
-uₕ = basis.φₕ*u[end]
-uₕ = uₕ[:]
-uₛ = basis.ψₕ*u[end]
-xf = zeros(uₛ)
-uₛ = uₛ[:]
-xg = zeros(u[1])
-for i in 1:size(xg,2)
-  b = mesh.cell_faces[i+1]; a=mesh.cell_faces[i]
-  xg[:,i] = 0.5 * (b - a) * basis.nodes + 0.5 * (b + a)
-  xf[:,i] = [a,b]
-end
-xg = xg[:]
-xf = xf[:]
-
 using Plots
 gr()
-plot(xg, uₕ)
-scatter!(xf, uₛ)
+plot(u)

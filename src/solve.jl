@@ -43,7 +43,7 @@ function solve{MeshType}(
   if timeIntegrator.sol.t[end] != problem.tspan[end]
     savevalues!(timeIntegrator)
   end
-  return timeIntegrator.sol
+  return build_solution(timeIntegrator.sol,basis,problem)
 end
 
 "Update dt based on CFL condition"
