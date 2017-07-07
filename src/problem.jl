@@ -1,5 +1,5 @@
 abstract type DGProblem end
-struct DGScalar1DProblem{MeshType,tType,T1}  <: DGProblem
+struct DG1DProblem{MeshType,tType,T1}  <: DGProblem
   f0::Function
   f::Function
   max_w_speed::Function
@@ -10,6 +10,6 @@ struct DGScalar1DProblem{MeshType,tType,T1}  <: DGProblem
   right_boundary::Symbol
 end
 
-function DGScalar1DProblem(f0,f,max_w_speed, mesh, tspan,cfl; left_b = :Periodic, right_b = :Periodic)
-  DGScalar1DProblem{typeof(mesh), eltype(tspan), typeof(cfl)}(f0,f, max_w_speed, mesh, tspan,cfl,left_b, right_b)
+function DG1DProblem(f0,f,max_w_speed, mesh, tspan,cfl; left_b = :Periodic, right_b = :Periodic)
+  DG1DProblem{typeof(mesh), eltype(tspan), typeof(cfl)}(f0,f, max_w_speed, mesh, tspan,cfl,left_b, right_b)
 end

@@ -17,7 +17,7 @@ max_w_speed(u) = 1
 #Setup problem
 tspan = (0.0,1.0)
 cfl = 0.5
-problem = DGScalar1DProblem(f0, f, max_w_speed, mesh, tspan, cfl)
+problem = DG1DProblem(f0, f, max_w_speed, mesh, tspan, cfl)
 
 #Generate basis for Discontinuous Galerkin Scheme
 basis=legendre_basis(3)
@@ -28,4 +28,4 @@ u = solve(problem, DiscontinuousGalerkinScheme(basis, advection_solver))
 #Plot
 using Plots
 gr()
-plot(u)
+plot(u; tidx = 1)
