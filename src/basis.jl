@@ -54,7 +54,7 @@ end
 function project_function(f, basis, interval::Tuple; component=1)
   nodes = reference_to_interval(basis.nodes, interval)
   f_val = zeros(nodes)
-  for i in size(f_val,1)
+  for i in 1:size(nodes,1)
     f_val[i] = f(nodes[i])[component]
   end
   function model(x,p)
