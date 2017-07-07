@@ -12,18 +12,21 @@ end
 
 "Solve scalar 1D conservation laws problems"
 function solve{MeshType}(
-  problem::DGScalar1DProblem{MeshType},
+  problem::DG1DProblem{MeshType},
   alg::DiscontinuousGalerkinScheme;  kwargs...)
   # Unpack some useful variables
   @unpack basis, TimeAlgorithm, riemann_solver = alg
   mesh = problem.mesh
   N = mesh.N
-
+  NC = size(problem.f0(mesh.cell_faces[1]),1)
+  NN = basis.order+1
   #Assign Initial values (u0 = φₕ⋅u0ₘ)
-  u0ₘ = zeros(basis.order+1, N)
+  u0ₘ = zeros(NN*NC, N)
   for i = 1:N
-    value = project_function(problem.f0,basis,(mesh.cell_faces[i],mesh.cell_faces[i+1]))
-    u0ₘ[:,i] = value.param
+    for j = 1:NC
+      value = project_function(problem.f0,basis,(mesh.cell_faces[i],mesh.cell_faces[i+1]); component = j)
+      u0ₘ[(j-1)*NC+1:NN*j,i] = value.param
+    end
   end
 
   #build inverse of mass matrix
@@ -33,7 +36,7 @@ function solve{MeshType}(
   #First dt
   dt = update_dt(u0ₘ, problem, basis.order)
   # Setup time integrator
-  semidiscretef(t,u,du) = residual!(du, u, basis, problem, riemann_solver, M_inv)
+  semidiscretef(t,u,du) = residual!(du, u, basis, problem, riemann_solver, M_inv,NC)
   prob = ODEProblem(semidiscretef, u0ₘ, problem.tspan)
   timeIntegrator = init(prob, TimeAlgorithm;dt=dt, kwargs...)
   @inbounds for i in timeIntegrator
@@ -43,11 +46,11 @@ function solve{MeshType}(
   if timeIntegrator.sol.t[end] != problem.tspan[end]
     savevalues!(timeIntegrator)
   end
-  return build_solution(timeIntegrator.sol,basis,problem)
+  return build_solution(timeIntegrator.sol,basis,problem, NC)
 end
 
 "Update dt based on CFL condition"
-function update_dt(u, problem::DGScalar1DProblem, order)
+function update_dt(u, problem::DG1DProblem, order)
   ν = problem.max_w_speed(u)
   cfl = problem.cfl
   dx = max(problem.mesh.cell_dx)
@@ -55,13 +58,24 @@ function update_dt(u, problem::DGScalar1DProblem, order)
 end
 
 "Apply boundary conditions on scalar problems"
-function apply_boundary(u, problem::DGScalar1DProblem)
+function apply_boundary(u, problem::DG1DProblem)
   if problem.left_boundary == :Periodic
     u[:,1] = u[:,end-1]
   end
   if problem.right_boundary == :Periodic
     u[:,end] = u[:,2]
   end
+end
+
+"build a block diagonal matrix by repeating a matrix N times"
+function myblock(A::Matrix,N::Int)
+  M = size(A,1)
+  Q = size(A,2)
+  B = zeros(eltype(A),M*N,Q*N)
+  for i = 1:N
+    B[(i-1)*M+1:i*M,(i-1)*Q+1:i*Q] = A
+  end
+  B
 end
 
 "Calculates residual for DG method
@@ -80,43 +94,48 @@ end
   apply_boundary(uₘ, problem)
 
   #Reconstruct u in finite space: uₕ(ξ)
-  uₕ = basis.φₕ*uₘ
+  uₕ = myblock(basis.φₕ,NC)*uₘ
 
   #Reconstruct u on faces
-  uₛ = basis.ψₕ*uₘ
+  uₛ = myblock(basis.ψₕ,NC)*uₘ
 
   F = zeros(uₕ)
   Fₕ = zeros(uₕ)
   for k in 1:size(uₕ,2)
-    Fₕ[:,k] = problem.f(uₕ[:,k])
+    for j in 1:NC
+      Fₕ[j:NC:size(uₕ,1),k] = problem.f(uₕ[j:NC:size(uₕ,1),k])
+    end
   end
   # Integrate interior fluxes ∫f(uₕ)φ'(ξ)dξ
-  F = A_mul_B!(F,basis.dφₕ',Fₕ.*basis.weights)
+  F = A_mul_B!(F,myblock(basis.dφₕ.*basis.weights,NC)',Fₕ)
 
   # Evaluate edge fluxes
-  q = zeros(T,size(uₛ,2)-1)
+  q = zeros(T,NC,size(uₛ,2)-1)
   for i = 1:(size(uₛ,2)-1)
-    ul = uₛ[2,i]; ur = uₛ[1,i+1]
-    q[i] = riemann_solver(ul,ur)
+    ul = uₛ[2:2:size(uₛ,1),i]; ur = uₛ[1:2:size(uₛ,1),i+1]
+    q[:,i] = riemann_solver(ul,ur)
   end
   Q = zeros(F)
-  for l in 1:size(Q,1)
-    Q[l,2:end-1] = q[2:end] + (-1)^l*q[1:end-1]
+  NN = size(basis.φₕ,2)
+  for l in 1:NN
+    for j in 1:NC
+      Q[(j-1)*NN+l,2:end-1] = q[j,2:end] + (-1)^l*q[j,1:end-1]
+    end
   end
 end
-function residual!{T}(H, u, basis::Basis{T}, problem::DGProblem, riemann_solver, M_inv)
+function residual!{T}(H, u, basis::Basis{T}, problem::DGProblem, riemann_solver, M_inv,NC)
   @scalar_1D_residual_common
   H[:,:] = F[:,2:(end-1)]-Q[:,2:(end-1)]
   #Calculate residual
   for k in 1:mesh.N
-    H[:,k] = M_inv[k-1]*H[:,k]
+    H[:,k] = myblock(M_inv[k],NC)*H[:,k]
   end
   H
 end
 
-"Efficient residual computation for scalar problems"
-function residual!{T, MeshType<:DGU1DMesh}(H, u, basis::Basis{T}, problem::DGScalar1DProblem{MeshType}, riemann_solver, M_inv)
+"Efficient residual computation for uniform problems"
+function residual!{T, MeshType<:DGU1DMesh}(H, u, basis::Basis{T}, problem::DG1DProblem{MeshType}, riemann_solver, M_inv,NC)
   @scalar_1D_residual_common
   #Calculate residual
-  A_mul_B!(H,M_inv,F[:,2:(end-1)]-Q[:,2:(end-1)])
+  A_mul_B!(H,myblock(M_inv,NC),F[:,2:(end-1)]-Q[:,2:(end-1)])
 end

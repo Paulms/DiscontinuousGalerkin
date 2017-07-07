@@ -20,7 +20,7 @@ module DiscontinuousGalerkin
 
   export Uniform1DMesh
   export legendre_basis
-  export DGScalar1DProblem
+  export DG1DProblem
   export advection_solver
   export solve, DiscontinuousGalerkinScheme
 end
