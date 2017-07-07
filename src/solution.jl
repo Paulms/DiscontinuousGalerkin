@@ -22,7 +22,7 @@ function reconstruct_u(u::Matrix, φ::Matrix, NC::Int)
   NN = size(φ,1); Nx = size(u,2)
   uₕ = zeros(eltype(u), NN*Nx,NC)
   for j in 1:NC
-    uₕ[:,j] = uh[(j-1)*NC+1:j*NN,:][:]
+    uₕ[:,j] = uh[(j-1)*NN+1:j*NN,:][:]
   end
   return uₕ
 end

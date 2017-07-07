@@ -28,4 +28,4 @@ u = solve(problem, DiscontinuousGalerkinScheme(basis, advection_solver))
 #Plot
 using Plots
 gr()
-plot(u)
+plot(u; tidx = 1)
