@@ -25,7 +25,7 @@ function solve{MeshType}(
   for i = 1:N
     for j = 1:NC
       value = project_function(problem.f0,basis,(mesh.cell_faces[i],mesh.cell_faces[i+1]); component = j)
-      u0ₘ[(j-1)*NC+1:NN*j,i] = value.param
+      u0ₘ[(j-1)*NN+1:NN*j,i] = value.param
     end
   end
 
@@ -34,19 +34,32 @@ function solve{MeshType}(
 
   #Time loop
   #First dt
-  dt = update_dt(u0ₘ, problem, basis.order)
+  u0ₕ = reconstruct_u(u0ₘ, basis.φₕ, NC)
+  dt = update_dt(u0ₕ, problem, basis.order)
   # Setup time integrator
   semidiscretef(t,u,du) = residual!(du, u, basis, problem, riemann_solver, M_inv,NC)
   prob = ODEProblem(semidiscretef, u0ₘ, problem.tspan)
   timeIntegrator = init(prob, TimeAlgorithm;dt=dt, kwargs...)
   @inbounds for i in timeIntegrator
-    dt = update_dt(timeIntegrator.u, problem, basis.order)
+    uₕ = reconstruct_u(timeIntegrator.u, basis.φₕ, NC)
+    dt = update_dt(uₕ, problem, basis.order)
     set_proposed_dt!(timeIntegrator, dt)
   end
   if timeIntegrator.sol.t[end] != problem.tspan[end]
     savevalues!(timeIntegrator)
   end
   return build_solution(timeIntegrator.sol,basis,problem, NC)
+end
+
+"Reconstruc solution from basis space"
+function reconstruct_u(u::Matrix, φ::Matrix, NC::Int)
+  uh = myblock(φ,NC)*u
+  NN = size(φ,1); Nx = size(u,2)
+  uₕ = zeros(eltype(u), NN*Nx,NC)
+  for j in 1:NC
+    uₕ[:,j] = uh[(j-1)*NN+1:j*NN,:][:]
+  end
+  return uₕ
 end
 
 "Update dt based on CFL condition"
@@ -60,10 +73,14 @@ end
 "Apply boundary conditions on scalar problems"
 function apply_boundary(u, problem::DG1DProblem)
   if problem.left_boundary == :Periodic
-    u[:,1] = u[:,end-1]
+      u[:,1] = u[:,end-1]
+  elseif  problem.left_boundary == :ZeroFlux
+      u[:,1] = u[:,2]
   end
   if problem.right_boundary == :Periodic
-    u[:,end] = u[:,2]
+      u[:,end] = u[:,2]
+  elseif  problem.left_boundary == :ZeroFlux
+      u[:,end] = u[:,end-1]
   end
 end
 
@@ -95,21 +112,19 @@ end
 
   #Reconstruct u in finite space: uₕ(ξ)
   uₕ = myblock(basis.φₕ,NC)*uₘ
-
-  #Reconstruct u on faces
-  uₛ = myblock(basis.ψₕ,NC)*uₘ
-
   F = zeros(uₕ)
   Fₕ = zeros(uₕ)
+  NN = basis.order+1
   for k in 1:size(uₕ,2)
-    for j in 1:NC
-      Fₕ[j:NC:size(uₕ,1),k] = problem.f(uₕ[j:NC:size(uₕ,1),k])
+    for j in 1:NN
+      Fₕ[j:NN:size(uₕ,1),k] = problem.f(uₕ[j:NN:size(uₕ,1),k])
     end
   end
   # Integrate interior fluxes ∫f(uₕ)φ'(ξ)dξ
   F = A_mul_B!(F,myblock(basis.dφₕ.*basis.weights,NC)',Fₕ)
 
   # Evaluate edge fluxes
+  uₛ = myblock(basis.ψₕ,NC)*uₘ
   q = zeros(T,NC,size(uₛ,2)-1)
   for i = 1:(size(uₛ,2)-1)
     ul = uₛ[2:2:size(uₛ,1),i]; ur = uₛ[1:2:size(uₛ,1),i+1]

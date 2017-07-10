@@ -21,6 +21,6 @@ module DiscontinuousGalerkin
   export Uniform1DMesh
   export legendre_basis
   export DG1DProblem
-  export advection_solver
+  export advection_solver, rusanov_solver
   export solve, DiscontinuousGalerkinScheme
 end

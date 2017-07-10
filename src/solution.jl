@@ -17,16 +17,6 @@ struct DGSolution{T,N,uType,usType,xType,xfType,uType2,DType,tType,rateType,P,B,
   retcode::Symbol
 end
 
-function reconstruct_u(u::Matrix, φ::Matrix, NC::Int)
-  uh = myblock(φ,NC)*u
-  NN = size(φ,1); Nx = size(u,2)
-  uₕ = zeros(eltype(u), NN*Nx,NC)
-  for j in 1:NC
-    uₕ[:,j] = uh[(j-1)*NN+1:j*NN,:][:]
-  end
-  return uₕ
-end
-
 function build_solution{T,N,uType,uType2,DType,tType,
 rateType,P,A,IType}(
   ode_sol::ODESolution{T,N,uType,uType2,DType,tType,
