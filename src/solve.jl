@@ -1,7 +1,7 @@
 # Define Scheme type for solve function dispatch
 struct DiscontinuousGalerkinScheme
   TimeAlgorithm::OrdinaryDiffEqAlgorithm
-  basis::Basis
+  basis::PolynomialBasis
   riemann_solver::Function
 end
 
@@ -138,7 +138,7 @@ end
     end
   end
 end
-function residual!{T}(H, u, basis::Basis{T}, problem::DGProblem, riemann_solver, M_inv,NC)
+function residual!{T}(H, u, basis::PolynomialBasis{T}, problem::DGProblem, riemann_solver, M_inv,NC)
   @scalar_1D_residual_common
   H[:,:] = F[:,2:(end-1)]-Q[:,2:(end-1)]
   #Calculate residual
@@ -149,7 +149,7 @@ function residual!{T}(H, u, basis::Basis{T}, problem::DGProblem, riemann_solver,
 end
 
 "Efficient residual computation for uniform problems"
-function residual!{T, MeshType<:DGU1DMesh}(H, u, basis::Basis{T}, problem::DG1DProblem{MeshType}, riemann_solver, M_inv,NC)
+function residual!{T, MeshType<:DGU1DMesh}(H, u, basis::PolynomialBasis{T}, problem::DG1DProblem{MeshType}, riemann_solver, M_inv,NC)
   @scalar_1D_residual_common
   #Calculate residual
   A_mul_B!(H,myblock(M_inv,NC),F[:,2:(end-1)]-Q[:,2:(end-1)])

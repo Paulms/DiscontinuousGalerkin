@@ -1,4 +1,4 @@
-struct Basis{T}
+struct PolynomialBasis{T}
   order::Int
   nodes::Vector{T}
   weights::Vector{T}
@@ -6,6 +6,8 @@ struct Basis{T}
   φₕ::Matrix{T}
   ψₕ::Matrix{T}
   dφₕ::Matrix{T}
+  L2M::Matrix{T}
+  M2L::Matrix{T}
 end
 
 function legendre{T<:Number}(n, ::Type{T}=Float64, var=:x)
@@ -42,7 +44,10 @@ function legendre_basis{T<:Number}(order, ::Type{T}=Float64)
     # Eval faces nodes
     ψₕ[:,n+1] = polyval(p, [-1.0,1.0])
   end
-  Basis{T}(order,nodes,weights,polynomials,φₕ,ψₕ,dφₕ)
+  V = [nodes[i+1]^j/factorial(j) for i=0:order, j=0:order]
+  L2M = inv(V)*φₕ
+  M2L = inv(L2M)
+  PolynomialBasis{T}(order,nodes,weights,polynomials,φₕ,ψₕ,dφₕ,L2M,M2L)
 end
 
 "Maps reference coordinates (ξ) to interval coordinates (x)"
@@ -70,7 +75,7 @@ end
 
 #TODO: Dispatch on different basis types
 "Get mass matrix: (2l+1)/Δx for legendre polynomials"
-function get_local_mass_matrix{T}(basis::Basis{T}, mesh)
+function get_local_mass_matrix{T}(basis::PolynomialBasis{T}, mesh)
   diagnal = zeros(T, basis.order+1)
   diagnal[:] = 2.0/(2*(0:basis.order)+1)
   M = Vector{T}(mesh.N)
@@ -82,7 +87,7 @@ function get_local_mass_matrix{T}(basis::Basis{T}, mesh)
 end
 
 "Get mass matrix inverse: Δx/(2l+1) for legendre polynomials"
-function get_local_inv_mass_matrix{T,T2}(basis::Basis{T}, mesh::DG1DMesh{T2})
+function get_local_inv_mass_matrix{T,T2}(basis::PolynomialBasis{T}, mesh::DG1DMesh{T2})
   diagnal = zeros(T, basis.order+1)
   diagnal[:] = (2*(0:basis.order)+1) / 2.0
   M_inv = Vector{Matrix{T}}(mesh.N)
@@ -94,7 +99,7 @@ function get_local_inv_mass_matrix{T,T2}(basis::Basis{T}, mesh::DG1DMesh{T2})
 end
 
 "compute local inverse matrix on 1D uniform problems"
-function get_local_inv_mass_matrix{T,T2}(basis::Basis{T}, mesh::DGU1DMesh{T2})
+function get_local_inv_mass_matrix{T,T2}(basis::PolynomialBasis{T}, mesh::DGU1DMesh{T2})
   diagnal = zeros(T, basis.order+1)
   diagnal[:] = (2*(0:basis.order)+1) / 2.0
   M_inv = Vector{Matrix{T}}(mesh.N)
