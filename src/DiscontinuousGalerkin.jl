@@ -17,6 +17,7 @@ module DiscontinuousGalerkin
   include("solve.jl")
   include("solution.jl")
   include("plots.jl")
+  include("limiter.jl")
 
   export Uniform1DMesh
   export legendre_basis
