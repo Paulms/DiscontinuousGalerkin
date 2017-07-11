@@ -13,20 +13,20 @@ function SlopLimitN(uₘ::Matrix, basis::DiscontinuousGalerkin.PolynomialBasis, 
   # Compute cell averages
   uh = basis.L2M*uₘ
   uh = uh ./ [factorial(i) for i in 0:basis.order]
-  ū = [0.5*(polyval(polyint(Poly(uh[:,i])),1)-polyval(polyint(Poly(uh[:,i])),-1)) for i in size(uh,2)]
+  ū = [0.5*(polyval(polyint(Poly(uh[:,i])),1)-polyval(polyint(Poly(uh[:,i])),-1)) for i in 1:size(uh,2)]
 
   ulimit = uₘ
   # find end values of each element
   ue1 = uₘ[1,:];ue2=uₘ[end,:]
 
   #find cell averages
-  vk = ū; vkm1=[ū[1],ū[1:end-1]];vkp1=[ū[2:end],ū[end]]
+  vk = ū; vkm1=[ū[1],ū[1:end-1]...];vkp1=[ū[2:end]...,ū[end]]
 
   #apply reconstruction to find elements in need of limiting
   ve1 = vk - minmod.(vk-ue1, vk -vkm1,vkp1-vk)
   ve2 = vk + minmod.(ue2-vk,vk-vkm1,vkp1-vk)
   tol = 1e-8
-  idx = (abs.(ve1-ue1)>tol)|(abs.(ve2-ue2)>tol)
+  idx = (abs.(ve1-ue1).>tol)|(abs.(ve2-ue2).>tol)
   if (!isempty(idx))
     h2 = 2/diff(mesh.cell_faces)
     x1 = zeros(basis.order+1,mesh.N)
