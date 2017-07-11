@@ -14,11 +14,11 @@ function rusanov_solver(ul, ur)
   # Fisical variables and sound speeds
   ρL = ul[1];vL=ul[2]/ρL;EL = ul[3]
   pL = (γ - 1)*(EL - 0.5*ρL*vL*vL)
-  aL = sqrt(γ*pL/ρL)
+  aL = sqrt(γ*max(pL/ρL,1.0))
 
   ρR = ur[1];vR=ur[2]/ρR;ER = ur[3]
   pR = (γ - 1)*(ER - 0.5*ρR*vR*vR)
-  aR = sqrt(γ*pR/ρR)
+  aR = sqrt(γ*max(pR/ρR,1.0))
 
   # Find the maximum eigenvalue for each interface
   maxρ = max(abs(vL)+aL, abs(vR)+aR)
