@@ -1,15 +1,29 @@
-abstract type DGProblem end
-struct DG1DProblem{MeshType,tType,T1}  <: DGProblem
-  f0::Function
-  f::Function
-  max_w_speed::Function
-  mesh::MeshType
-  tspan::Tuple{tType,tType}
-  cfl::T1
-  left_boundary::Symbol
-  right_boundary::Symbol
+struct ConservationLawsProblem{islinear,isstochastic,MeshType,F,F3,F4,F5} <: AbstractConservationLawProblem{islinear,isstochastic,MeshType}
+ f0::F5
+ f::F
+ CFL::F3
+ tspan::Tuple{F4,F4}
+ numvars::Int
+ mesh::MeshType
 end
 
-function DG1DProblem(f0,f,max_w_speed, mesh, tspan,cfl; left_b = :Periodic, right_b = :Periodic)
-  DG1DProblem{typeof(mesh), eltype(tspan), typeof(cfl)}(f0,f, max_w_speed, mesh, tspan,cfl,left_b, right_b)
+isinplace{islinear,isstochastic,MeshType}(prob::AbstractConservationLawProblem{islinear,isstochastic,MeshType}) = false
+
+function ConservationLawsProblem(f0,f,CFL,tend,mesh)
+ numvars = size(f0(cell_faces(mesh)[1]),1)
+ islinear = false
+ isstochastic = false
+ ConservationLawsProblem{islinear,isstochastic,typeof(mesh),typeof(f),typeof(CFL),typeof(tend),typeof(f0)}(f0,f,CFL,(0.0,tend),numvars,mesh)
+end
+
+### Displays
+Base.summary(prob::AbstractConservationLawProblem{islinear,isstochastic,mType}) where {islinear, isstochastic, mType} = string("ConservationLawsProblem"," with mType ",mType)
+
+function Base.show(io::IO, A::AbstractConservationLawProblem)
+  println(io,summary(A))
+  print(io,"timespan: ")
+  show(io,A.tspan)
+  println(io)
+  print(io,"num vars: ")
+  show(io, A.numvars)
 end

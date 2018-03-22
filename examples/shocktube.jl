@@ -2,15 +2,26 @@
 # build mesh
 include("../src/DiscontinuousGalerkin.jl")
 using DiscontinuousGalerkin
-N = 20
-mesh = Uniform1DMesh(N,-1.0,1.0)
-#Parameters
-xdiafragm = 0.0
-const γ = 1.4
+const CFL = 0.5
+const Tend = 0.2
+const γ=1.4 #gas constant
+const xdiafragm = 0.0
 
-#define initial condition
+function f(::Type{Val{:jac}},u::Vector)
+  ρ = u[1]; v = u[2]/u[1]; ϵ=u[3]
+  p = (ϵ-0.5*ρ*v^2)*(γ-1)
+  F =[0.0 1.0 0.0;-v^2*(1+γ)/2 v*(3-γ) (γ-1);v^3*(γ-1)+γ*ϵ*v/ρ 3/2*v^2*(1-γ)+γ*ϵ/ρ γ*v]
+  F
+end
+
+function f(u::Vector)
+  ρ = u[1]; v = u[2]/u[1]; ϵ=u[3]
+  p = (ϵ-0.5*ρ*v^2)*(γ-1)
+  [u[2];u[2]^2/u[1]+p;(ϵ+p)*v]
+end
+
+#initial condition
 function f0(x::Real)
-  #u_fis = [ρ, u, p]
   ufis_l = [1.0, 0.0,	1.0]
   ufis_r = [0.125 0.0 0.1]
   if x <= xdiafragm
@@ -21,37 +32,49 @@ function f0(x::Real)
   return [ρ, ρ*u, 1.0/(γ - 1.0)*p + 0.5*ρ*u*u]
 end
 
-#define flux function (generic for euler systems)
-function f(u)
-  # Fisical variables
-  ρ = u[1];v = u[2]/ρ;E = u[3]
-  p = (γ - 1)*(E - 0.5*ρ*v*v)
-  # Flux
-  return [u[2], ρ*v*v + p, (E + p)*v]
-end
-
+positive(x) = max(0,x)
 #define max wave speed (generic euler system)
 function max_w_speed(u)
   ρ = u[:,1];v = u[:,2]./ρ;E = u[:,3]
   p = zeros(ρ); wave_speed = zeros(ρ)
   @. p = (γ-1)*(E-0.5*ρ*v*v)
-  @. wave_speed = abs(v) + sqrt(γ*p/ρ)
+  @. wave_speed = abs(v) + sqrt(γ*positive(p/ρ))
   return maximum(wave_speed)
 end
 
-#Setup problem
-tspan = (0.0,0.2)
-cfl = 0.5
-problem = DG1DProblem(f0, f, max_w_speed, mesh, tspan, cfl;
-          left_b = :ZeroFlux, right_b = :ZeroFlux)
+function Nflux(ul::Vector, ur::Vector)
+  ρl = ul[1]; vl = ul[2]/ul[1]; ϵl=ul[3]
+  pl = (ϵl-0.5*ρl*vl^2)*(γ-1)
+  ρr = ur[1]; vr = ur[2]/ur[1]; ϵr=ur[3]
+  pr = (ϵr-0.5*ρr*vr^2)*(γ-1)
+  zl = sqrt(ρl/pl)*[1;vl;pl]
+  zr = sqrt(ρr/pr)*[1;vr;pr]
+  zm = 0.5*(zl+zr)
+  zln = (zr-zl)./(log(zr)-log(zl))
+  F = zeros(ul)
+  F[1] = zm[2]*zln[3]
+  F[2] = zm[3]/zm[1]+zm[2]/zm[1]*F[1]
+  F[2] = 0.5*zm[2]/zm[1]*((γ+1)/(γ-1)*zln[3]/zln[1]+F[2])
+  F
+end
 
-#Generate basis for Discontinuous Galerkin Scheme
+function ve(u::Vector)
+  ρ = u[1]; v = u[2]/u[1]; ϵ=u[3]
+  p = (ϵ-0.5*ρ*v^2)*(γ-1)
+  s = log(p)-γ*log(ρ)
+  return [(γ-s)/(γ-1)-ρ*v^2/(2*p);ρ*v/p;-ρ/p]
+end
+
+function get_problem(N)
+    mesh = Uniform1DFVMesh(N,-1.0,1.0,:ZERO_FLUX, :ZERO_FLUX)
+    ConservationLawsProblem(f0,f,CFL,Tend,mesh)
+end
+prob = get_problem(20)
+
 basis=legendre_basis(3)
-
-#Solve problem
-u = solve(problem, DiscontinuousGalerkinScheme(basis, rusanov_solver))
+limiter! = DGLimiter(prob, basis, Linear_MUSCL_Limiter())
+@time sol = solve(prob, DiscontinuousGalerkinScheme(basis, rusanov_euler_num_flux); TimeIntegrator = SSPRK22(limiter!))
 
 #Plot
 using Plots
-gr()
-plot(u)
+plot(sol)

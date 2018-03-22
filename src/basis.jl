@@ -1,26 +1,38 @@
+#################### Basis for Polynomial Space ####################3
 struct PolynomialBasis{T}
   order::Int
-  nodes::Vector{T}
-  weights::Vector{T}
+  nodes::Vector{T}      #Quadrature nodes for numerical integration
+  weights::Vector{T}    #Quadrature weights for numerical integration
   polynomials::Vector{Poly}
-  φₕ::Matrix{T}
-  ψₕ::Matrix{T}
-  dφₕ::Matrix{T}
-  L2M::Matrix{T}
-  M2L::Matrix{T}
+  φ::Matrix{T}     #Vandermonde matrix: basis polynomials evaluated on G-L nodes
+  dφ::Matrix{T}
+  invφ::Matrix{T}   #inverse of Gen. Vandermonde matrix
 end
 
-function legendre{T<:Number}(n, ::Type{T}=Float64, var=:x)
-    if n==0
-        return Poly{T}([one(T)], var)
-    elseif n==1
-        return Poly{T}([zero(T), one(T)], var)
-    end
+"""compute Legendre polynomials coefficients, normalized to be orthonormal"""
+function poly_legendre{T<:Number}(n, ::Type{T}=Float64, var=:x)
+    return poly_jacobi(n,0.0,0.0,T,var)
+end
+
+"""compute Jacobi polynomials coefficients, normalized to be orthonormal"""
+function poly_jacobi{T<:Number}(n, a, b, ::Type{T}=Float64, var=:x)
+    ox = one(T)
+    zx = zero(T)
+    #Compute initial P_0 and P_1
+    γ0 = 2^(a+b+1)/(a+b+1)*gamma(a+1)*gamma(b+1)/gamma(a+b+1);
+    p0 = Poly{T}([one(T)/sqrt(γ0)], var)
+    if n==0; return p0; end
+    γ1 = (a+1)*(b+1)/(a+b+3)*γ0
+    p1 = Poly{T}([(a-b)/2/sqrt(γ1), (a+b+2)/2/sqrt(γ1)], var)
+    if n==1; return p1; end
     px = Poly{T}([zero(T), one(T)], var)
-    p0 = Poly{T}([one(T)], var)
-    p1 = px
-    for i = 2:n
-        p2 = ( (2i-1)*px*p1 - (i-1)*p0 ) / i
+    aold = 2/(2+a+b)*sqrt((a+1)*(b+1)/(a+b+3))
+    for i = 1:(n-1)
+        h1 = 2*i+a+b;
+        anew = 2/(h1+2)*sqrt((i+1)*(i+1+a+b)*(i+1+a)*(i+1+b)/(h1+1)/(h1+3))
+        bnew = -(a^2-b^2)/h1/(h1+2);
+        p2 = ox/anew*(-aold*p0 + (px-bnew)*p1);
+        aold =anew;
         p0 = p1
         p1 = p2
     end
@@ -28,29 +40,23 @@ function legendre{T<:Number}(n, ::Type{T}=Float64, var=:x)
 end
 
 function legendre_basis{T<:Number}(order, ::Type{T}=Float64)
-  nodes, weights = gausslegendre(order+1)
-  φₕ = zeros(T,order+1,order+1)
-  dφₕ = zeros(T,order+1,order+1)
-  # TODO: # of faces depend on dimensions
-  ψₕ = zeros(T,2,order+1)
+  nodes, weights = gausslobatto(order+1)
+  φ = zeros(T,order+1,order+1)
+  dφ = zeros(T,order+1,order+1)
   polynomials = Vector{Poly}(order+1)
   for n = 0:order
-    p = legendre(n, T)
+    p = poly_legendre(n, T)
     dp = polyder(p)
     polynomials[n+1] = p
     # Eval interior nodes
-    φₕ[:,n+1] = polyval(p, nodes)
-    dφₕ[:,n+1] = polyval(dp, nodes)
-    # Eval faces nodes
-    ψₕ[:,n+1] = polyval(p, [-1.0,1.0])
+    φ[:,n+1] = polyval(p, nodes)
+    dφ[:,n+1] = polyval(dp, nodes)
   end
-  V = [nodes[i+1]^j/factorial(j) for i=0:order, j=0:order]
-  L2M = inv(V)*φₕ
-  M2L = inv(L2M)
-  PolynomialBasis{T}(order,nodes,weights,polynomials,φₕ,ψₕ,dφₕ,L2M,M2L)
+  invφ = inv(φ)
+  PolynomialBasis{T}(order,nodes,weights,polynomials,φ,dφ,invφ)
 end
 
-"Maps reference coordinates (ξ) to interval coordinates (x)"
+"Maps reference coordinates (ξ ∈ [-1,1]) to interval coordinates (x)"
 function reference_to_interval(ξ,a::Tuple)
    0.5*(a[2]-a[1])*ξ + 0.5*(a[2]+a[1])
 end
@@ -73,35 +79,23 @@ function project_function(f, basis, interval::Tuple; component=1)
   curve_fit(model, basis.nodes, f_val, p0)
 end
 
-#TODO: Dispatch on different basis types
-"Get mass matrix: (2l+1)/Δx for legendre polynomials"
-function get_local_mass_matrix{T}(basis::PolynomialBasis{T}, mesh)
-  diagnal = zeros(T, basis.order+1)
-  diagnal[:] = 2.0/(2*(0:basis.order)+1)
-  M = Vector{T}(mesh.N)
-  m = diagm(diagnal)
-  for k in 1:mesh.N
-    M[k] = mesh.cell_dx[k]/2.0*m
-  end
-  return M
-end
-
-"Get mass matrix inverse: Δx/(2l+1) for legendre polynomials"
-function get_local_inv_mass_matrix{T,T2}(basis::PolynomialBasis{T}, mesh::DG1DMesh{T2})
-  diagnal = zeros(T, basis.order+1)
-  diagnal[:] = (2*(0:basis.order)+1) / 2.0
-  M_inv = Vector{Matrix{T}}(mesh.N)
-  M = diagm(diagnal)
-  for k in 1:mesh.N
-    M_inv[k] = 2.0./mesh.cell_dx[k]*M
-  end
-  return M_inv
-end
-
-"compute local inverse matrix on 1D uniform problems"
-function get_local_inv_mass_matrix{T,T2}(basis::PolynomialBasis{T}, mesh::DGU1DMesh{T2})
-  diagnal = zeros(T, basis.order+1)
-  diagnal[:] = (2*(0:basis.order)+1) / 2.0
-  M_inv = Vector{Matrix{T}}(mesh.N)
-  return 2.0/mesh.cell_dx*diagm(diagnal)
-end
+# using FEMBasis
+# import FEMBasis: create_basis
+# a = legendre_basis(2)
+#
+# code = create_basis(
+# :LegSeg3,
+# "3 node linear segment/line orthogonal legendre element",
+# NTuple((
+#  (-0.7745966692414834,), # N1
+#  ( 0.0, ), # N2
+#  ( 0.7745966692414834, ), # N3
+# )),(
+#  :(0.5 + 0.5),
+#  :(1.0*u),
+#  :(-0.5 + 1.5*u^2),)
+# )
+# eval(code)
+#
+# eval_basis!(LegSeg3(),zeros(3,1),(-0.7745966692414834))
+# eval_dbasis!(LegSeg3(),zeros(1,3),(-0.7745966692414834))

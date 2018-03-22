@@ -1,4 +1,4 @@
-@recipe function f(sol::DGSolution; tidx = size(sol.t,1), uvars=0)
+@recipe function f(sol::DGSolution; tidx = size(sol.t,1), vars=nothing)
     xguide --> "x"
     yguide --> "u"
     labels = String[]
@@ -6,11 +6,9 @@
       push!(labels,"u$i")
     end
     yvector = sol.u[tidx]
-    ysvector = sol.uₛ[tidx]
-    if uvars != 0
-      yvector = sol.u[tidx][:,uvars]
-      ysvector = sol.uₛ[tidx][:,uvars]
-      labels = labels[uvars]
+    if vars != nothing
+      yvector = sol.u[tidx][:,vars]
+      labels = labels[vars]
     end
     if typeof(labels) <: String
       label --> labels
@@ -21,9 +19,4 @@
       seriestype  :=  :path
       sol.nodes, yvector
     end
-    @series begin
-      seriestype  :=  :scatter
-      sol.face_nodes, ysvector
-    end
-
 end
